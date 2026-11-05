@@ -1252,7 +1252,7 @@ function render(){if(!S||COIN||TZB||USEB)return;const nu=(S.uq||[]).find(q=>q.n>
  <div class="row one">${slot(p,'m',1)}</div><div class="row">${slot(p,0,1)}${slot(p,1,1)}</div></div></div>
  <div class="hand">${p.hand.map((c,i)=>card(c,0,i,fan(i))).join('')}</div>
  <div class="sch">${SCH}</div>${ambHTML(s,me,myT)}<div class="tz">${tzi(p,me,me)}${tzi(o,1-me,me)}</div>
- <div class="ml"><b>${ban}</b>${s.log.slice(-5).map(l=>`<span class="note">${esc(l)}</span>`).join('')}<span class="note">Click a card to enlarge it (click outside to close). To attack: click your active Yokai, then its attack. Drag hand cards onto empty slots; drag your active onto a flank (or the reverse) to retreat: it discards the active's retreat cost in energy (any type), once per turn. Abilities: click your Yokai (active or flank) then its ★ ability: no energy, once per turn, doesn't end your turn; passives are always on. Flanks can't go back to your hand during the game. Commando cards: click one in your hand and press Play card, or drag it onto the board (drop Objects on a Yokai). One Helper per turn, Tools are unlimited, one Ambience at a time. Drag the generator orb onto a Yokai. You draw a card at the start of your turn.</span></div>
+ <div class="ml"><b>${ban}</b>${s.log.slice(-5).map(l=>`<span class="note">${esc(l)}</span>`).join('')}<span class="note"></span></div>
  <div class="mr"><div class="card back"></div><span>${p.deck.length} left</span>${pileEl(me,p.dis||[])}${gen}${bb}${btn}</div>
  <div class="bl"><b>${esc(p.name)}${MODE=='host'||MODE=='guest'?' (you)':''}</b><span>${dots(p.score)}</span></div>
  ${zoomHTML(s,p,o,me,myT)}
