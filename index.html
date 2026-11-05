@@ -625,13 +625,25 @@ const take=c=>{const l=[];for(const t in c.e)for(let n=c.e[t];n>0;n--)l.push(t);
 const dshuf=p=>{shuffle(p.deck);p.sh=(p.sh||0)+1}; // in-game deck shuffle (counted so the client plays the shuffle animation)
 const tut=(p,f)=>{const j=p.deck.findIndex(id=>f(DB[id]));if(j<0)return 0;p.hand.push(inst(p.deck.splice(j,1)[0]));p.dr=(p.dr||0)+1;dshuf(p);return 1};
 const strk=(c,s)=>{c.sk=(c.su===s.tn-2?c.sk:0)+1;c.su=s.tn};
+/* rage (Kuroshiro / Rouka): x = how many of the owner's next turns stay boosted.
+   Old saves may not have x (treated as 1) - see also norm(). */
+const rageX=a=>Math.max(1,Math.round(+((a&&a.x))||1));
+const rageOn=(s,c,a)=>{const n=c.rt==null?-1:s.tn-c.rt;return n>=2&&n<=2*rageX(a)};
+const rageRaw=c=>{const a=c&&DB[c.k]&&DB[c.k].ab;return a&&a.k=='rage'?a:null};
+/* the max-HP paid for the rage comes back when the boosted turns are over (even if silenced) */
+const rageFix=(s,c)=>{const a=rageRaw(c);if(!a||c.rt==null||!c.rl)return;if(s.tn-c.rt<2*rageX(a))return;
+ c.mhp+=c.rl;c.hp=Math.min(c.mhp,c.hp+c.rl);const nm=DB[c.k].name;c.rl=0;c.rt=null;lg(s,nm+"'s rage wears off.")};
 const AK={
  elem:{a:1,ok:(s,p,o,c)=>c.le?'':'No energy absorbed yet',go:(s,p,o,c)=>{c.ke=c.le;c.kt=s.tn}},
  summon:{a:1,dft:{t:'Void'},ok:(s,p,o,c,a)=>p.deck.some(i=>DB[i].el==a.t)?'':'No '+a.t+' Yokai in deck',go:(s,p,o,c,a)=>tut(p,d=>d.el==a.t)},
  tutor:{a:1,dft:{t:'menouji'},ok:(s,p,o,c,a)=>p.deck.some(i=>hasT(DB[i],a.t))?'':'No matching card in deck',go:(s,p,o,c,a)=>tut(p,d=>hasT(d,a.t))},
  grow:{a:1,dft:{v:20},go:(s,p,o,c,a)=>{strk(c,s);const dl=Math.round(DB[c.k].hp*a.v/100);c.mhp+=dl;c.hp+=dl;c.gb=(c.gb||0)+dl;c.na=s.tn}},
  focus:{a:1,dft:{v:50},go:(s,p,o,c)=>{strk(c,s);c.na=s.tn}},
- rage:{a:1,dft:{v:30,x:1},ok:(s,p,o,c,a)=>c.rt!=null&&s.tn-c.rt<=2*a.x?'Still recovering':c.hp>Math.round(c.mhp*a.v/100)?'':'Too weak',go:(s,p,o,c,a)=>{c.hp-=Math.round(c.mhp*a.v/100);c.rt=s.tn}},
+ rage:{a:1,dft:{v:30,x:1},
+  ok:(s,p,o,c,a)=>c.rt!=null&&s.tn-c.rt<=2*rageX(a)?'Still recovering':c.hp>Math.min(c.mhp-1,Math.round(c.mhp*a.v/100))?'':'Too weak',
+  go:(s,p,o,c,a)=>{const loss=Math.min(c.hp-1,c.mhp-1,Math.round(c.mhp*a.v/100));if(loss<=0)return false;
+   c.mhp-=loss;c.hp-=loss;c.rl=(c.rl||0)+loss;c.rt=s.tn;
+   lg(s,DB[c.k].name+' is enraged: -'+loss+' max HP, +'+a.v+'% atk for '+rageX(a)+' turn'+(rageX(a)>1?'s':''))}},
  cure:{a:1,dft:{t:'burnt'},ok:(s,p,o,c,a)=>fld(p).some(y=>y.st==a.t)?'':'Nobody is '+(STS[a.t]?STS[a.t].n:a.t),go:(s,p,o,c,a)=>fld(p).forEach(y=>{if(y.st==a.t)cure(s,y)})},
  heal:{a:1,dft:{t:'kaza',v:20},ok:(s,p,o,c,a)=>fld(p).some(y=>tgs(y,a.t)&&y.hp<y.mhp)?'':'Nobody to heal',go:(s,p,o,c,a)=>fld(p).forEach(y=>{if(tgs(y,a.t))y.hp=Math.min(y.mhp,y.hp+a.v)})},
  give:{a:1,dft:{t:'Nature'},ok:(s,p,o,c,a)=>fld(p).some(y=>elC(y,s)==a.t)?'':'No '+a.t+' Yokai on your field',
@@ -655,7 +667,7 @@ function abAtk(s,p,c){let r=0;const d=DB[c.k],f=fld(p);f.forEach(y=>{const a=abO
  if(a.k=='atkally'&&hasT(d,a.t))r+=a.v;
  if(a.k=='alley'){const q=f.filter(z=>z!==y&&hasT(DB[z.k],a.t));if(q.length&&(c===y||q.includes(c)))r+=a.v}
  if(a.k=='assist'){const q=f.find(z=>z!==y&&DB[z.k].name==a.t);if(q&&c===p.main&&(c===y||c===q))r+=a.v}});
- const a=abOf(c);if(a){if(a.k=='ushi')r+=(c.ug||0)*a.v;if(a.k=='focus')r+=(c.sk||0)*a.v;if(a.k=='rage'&&c.rt!=null){const n=s.tn-c.rt;if(n>=2&&n<=2*a.x)r+=a.v}}return r}
+ const a=abOf(c);if(a){if(a.k=='ushi')r+=(c.ug||0)*a.v;if(a.k=='focus')r+=(c.sk||0)*a.v;if(a.k=='rage'&&rageOn(s,c,a))r+=a.v}return r}
 const abFlat=(p,c)=>{const a=abK(c,'hand');return a?a.v*p.hand.filter(h=>tgs(h,a.t)).length:0};
 /* damage one target takes from an attack: attacker bonus vs tag, then the defender side's passives */
 function abHit(s,i,c,x,v,el){const o=s.p[1-i],d=DB[x.k],a0=abK(c,'vs');if(a0&&hasT(d,a0.t))v*=1+a0.v/100;let m=1;
@@ -668,7 +680,8 @@ function abHit(s,i,c,x,v,el){const o=s.p[1-i],d=DB[x.k],a0=abK(c,'vs');if(a0&&ha
  return Math.round(v*m)}
 function onPlace(s,p,c){if(!c||abK(c,'dasha'))return;const d=fld(p).find(y=>y!==c&&abK(y,'dasha'));if(d&&elC(c,s)==abK(d,'dasha').t)addE(c,abK(d,'dasha').t)}
 /* end of the owner's turn: Ushi stacks, streak resets (Pureya / Sukopu) */
-function abEnd(s,p){fld(p).forEach(c=>{const a=abOf(c);if(a&&a.k=='ushi')c.ug=c.ua===s.tn?0:(c.ug||0)+1;
+function abEnd(s,p){[p.main,...p.fl,...(p.hand||[])].forEach(c=>rageFix(s,c));
+ fld(p).forEach(c=>{const a=abOf(c);if(a&&a.k=='ushi')c.ug=c.ua===s.tn?0:(c.ug||0)+1;
  if(c.sk&&c.su!==s.tn){if(c.gb){c.mhp-=c.gb;c.hp=Math.max(1,Math.min(c.hp,c.mhp));c.gb=0}c.sk=0}})}
 /* '' = usable now, otherwise the reason it isn't */
 function abOk(s,i,k){const p=s.p[i],c=get(p,k),a=c&&abOf(c),K=a&&AK[a.k];if(!K||!K.a)return'Passive';
@@ -685,7 +698,7 @@ function abAff(s,i,c){const p=s.p[i],d=DB[c.k],f=fld(p),r=[],T=s.tn;
   else if(k=='alley'){const q=f.filter(z=>z!==y&&hasT(DB[z.k],a.t));ok=q.length&&(me||q.includes(c))}
   else if(k=='assist'){const q=f.find(z=>z!==y&&DB[z.k].name==a.t);ok=q&&c===p.main&&(me||c===q)}
   else if(k=='council')ok=c===p.main&&d.name==a.t&&p.fl.includes(y);
-  else if(me)ok=['imm','vsres','vs','coinres','storm'].includes(k)||(k=='ushi'&&c.ug>0)||(k=='focus'&&c.sk>0)||(k=='grow'&&c.gb>0)||(k=='hand'&&abFlat(p,c)>0)||(k=='elem'&&c.ke&&c.kt===T)||(k=='aether'&&c.ka===T)||(k=='rage'&&c.rt!=null&&T-c.rt>=2&&T-c.rt<=2*a.x);
+  else if(me)ok=['imm','vsres','vs','coinres','storm'].includes(k)||(k=='ushi'&&c.ug>0)||(k=='focus'&&c.sk>0)||(k=='grow'&&c.gb>0)||(k=='hand'&&abFlat(p,c)>0)||(k=='elem'&&c.ke&&c.kt===T)||(k=='aether'&&c.ka===T)||(k=='rage'&&rageOn(s,c,a));
   if(ok)r.push({s:DB[y.k].name,n:a.n,d:a.d})});return r.concat(cmAff(s,i,c))}
 /* commando cards that currently affect this Yokai: the active ambience, timed helper/tool buffs, permanent buffs. Listed next to the abilities. */
 function cmAff(s,i,c){const r=[],T=s.tn,p=s.p[i],seen={},lab=d=>(d.kind||'effect').replace(/^./,x=>x.toUpperCase());
@@ -728,7 +741,7 @@ function norm(c){if(c.type=='commando')return normC(c);c.atk.forEach(A=>{if(!Arr
  if(!c.weak)c.weak={t:DEFW[c.el]||'',v:WEAKV};c.weak.v=c.weak.v!=null&&isFinite(+c.weak.v)?Math.max(0,+c.weak.v):WEAKV;delete c.weak.m;if(!c.res)c.res={t:'',v:20};if(c.img==null)c.img='';if(!c.type)c.type='yokai';
  if(c.ret==null||isNaN(+c.ret))c.ret=1;c.ret=Math.max(0,Math.min(9,Math.round(+c.ret)));
  if(!Array.isArray(c.tags))c.tags=[];c.tags=c.tags.map(t=>String(t).trim()).filter(Boolean).slice(0,20);
- c.ab=c.ab&&typeof c.ab=='object'?c.ab:{};const b=c.ab;b.n=String(b.n||'').slice(0,40);b.d=String(b.d||'').slice(0,300);b.k=AK[b.k]?b.k:'';b.t=String(b.t||'').slice(0,60);b.v=+b.v||0;b.x=+b.x||0}
+ c.ab=c.ab&&typeof c.ab=='object'?c.ab:{};const b=c.ab;b.n=String(b.n||'').slice(0,40);b.d=String(b.d||'').slice(0,300);b.k=AK[b.k]?b.k:'';b.t=String(b.t||'').slice(0,60);b.v=+b.v||0;b.x=+b.x||0;if(b.k=='rage'&&!b.x)b.x=1}
 /* ---------- COMMANDO CARDS: data ----------
    kind: helper (1 per turn, discarded) | tool (unlimited, discarded) | ambience (1 active, hits both players) | object (assigned to a Yokai)
    fx = list of effects. Fields: k kind · t who it touches (selector) · e element/status · v value · x extra · w ambience side (all/me/opp) · vs target selector · pm = permanent on a chosen Yokai
