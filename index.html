@@ -514,6 +514,7 @@ function owned(id){try{if(localStorage.yk_all=='1')return true}catch(e){}return!
  <div>Name <input id="nm" maxlength="14" placeholder="Player"></div>
  <div class="col">
   <button onclick="show('lobby')">Play online</button>
+  <button onclick="startSolo()">Singleplayer (vs Bot)</button>
   <button onclick="startLocal()" style="display:none">Solo test (hot-seat)</button>
   <button onclick="openPacks()">Pack openings</button>
   <button onclick="openDeck()">Deck &amp; energies</button>
@@ -947,7 +948,7 @@ function newGame(a,b){const P=d=>({name:d.name,deck:shuffle(d.deck.slice()),hand
  s.p.forEach(p=>{for(let i=0;i<5;i++)draw(p);mull(p)});return s}
 function draw(p){if(p.deck.length){p.hand.push(inst(p.deck.pop()));p.dr=(p.dr||0)+1}}
 /* each turn starts with a draw; the generator makes one energy unit per turn (not on the very first turn) */
-function startTurn(s){const p=s.p[s.turn];fld(p).forEach(c=>{if(c.sv!=null){c.mhp=c.smx;c.hp=Math.min(c.sv,c.smx);c.sv=c.smx=null}});draw(p);if(s.tn>0)p.pe=p.en[Math.random()*p.en.length|0];cmdStart(s);tickSt(s)}
+function startTurn(s){const p=s.p[s.turn];fld(p).forEach(c=>{if(c.sv!=null){c.mhp=c.smx;c.hp=Math.min(c.sv,c.smx);c.sv=c.smx=null}});draw(p);if(s.tn>0){const r=()=>p.en[Math.random()*p.en.length|0];p.pe=p.nx&&p.en.includes(p.nx)?p.nx:r();p.nx=r()}cmdStart(s);tickSt(s)}
 /* coin flips are queued in s.cq so several can be shown one after another */
 function flip(s,who,card,sub,ok,no,fc){const f1=()=>{const h=Math.random()<.5+((s.p[who]&&s.p[who].hb)||0);s.cn=(s.cn||0)+1;s.cq=(s.cq||[]).concat({n:s.cn,who,card,sub,h,ok,no,sq:s.sq,c:(s.ck||[]).length}).slice(-30);s.log.push(`Coin flip: ${h?'heads':'tails'}!`);return h};
  let h=f1();const q=s.p[who],g=fc&&q&&fld(q).find(y=>abK(y,'reflip')&&tgs(fc,abK(y,'reflip').t));
@@ -1273,7 +1274,7 @@ function render(){if(!S)return;if(DIR){RQ=true;return}if(COIN||TZB||USEB)return;
  const bb=p.bg&&myT?`<button class="bstb${p.bst?' on':''}" onclick="send({t:'bst'})">${p.bst?'Boost ON':'Boost'}: +${p.bgv}% atk, −${p.bgd} to your flanks</button>`:'';
  const prev=LASTME===null?null:snap();const G=$('game');G.className='on'+(p.pe&&myT?' pe':'')+(RETR?' retr':'');
  const n=p.hand.length,fan=i=>fanSt(i,n);
- const gen=`<div class="gen"><small class="note">Energy generator ${p.en.map(sym).join(' ')}</small>${p.pe&&myT?`<div class="orb" style="--c:${EL[p.pe][0]}">${EL[p.pe][1]}</div><small>drag onto a Yokai</small>`:'<div class="orb off">·</div>'}</div>`;
+ const gen=`<div class="gen"><small class="note">Energy generator ${p.en.map(sym).join(' ')}</small>${p.nx?`<small class="nxe" title="Energy you will receive next turn" style="color:${EL[p.nx][0]}">Next turn: <b style="font-size:1.25em">${sym(p.nx)}</b> ${p.nx}</small>`:''}${p.pe&&myT?`<div class="orb" style="--c:${EL[p.pe][0]}">${EL[p.pe][1]}</div><small>drag onto a Yokai</small>`:'<div class="orb off">·</div>'}</div>`;
  G.innerHTML=`<div class="tl"><div class="card back"></div><span>${o.deck.length} left</span>${pileEl(1-me,o.dis||[])}</div>
  <div class="tr"><b>${esc(o.name)}</b><span>${dots(o.score)}</span></div>
  <div class="ohand">${o.hand.map((_,i)=>`<div class="card back" style="${fanSt(i,o.hand.length)}"></div>`).join('')}</div>
@@ -2698,5 +2699,122 @@ const PKBG=(()=>{let C,X,W=0,H=0,t=0,last=0,raf=0,on=false,cur='',prev='',mix=1;
  return{set(k){if(k===cur)return;prev=cur;cur=k;mix=prev?0:1},
   run(v){sk();on=v;C.classList.toggle('on',v);if(v&&!raf){last=performance.now();raf=requestAnimationFrame(frame)}if(!v){cancelAnimationFrame(raf);raf=0}}}})();
 {const PB_SH=show;show=function(id){PB_SH(id);try{PKBG.run(id=='packs')}catch(e){console.error(e)}}}
+</script>
+<script>
+/* ================= SINGLEPLAYER vs BOT =================
+   The bot plays seat 1 against you (seat 0) with a random built-in default deck.
+   It never guesses: every candidate move (energy, placing, retreating, abilities, Commando cards,
+   Boost, attacks...) is run on a private copy of the real game engine, scored, and the best line is played. */
+(function(){
+const NG0=newGame;newGame=function(a,b){const s=NG0(a,b);s.p.forEach(p=>{p.nx=p.en[Math.random()*p.en.length|0]});return s};
+let SOLO=false,BT=null,BN=0,BTN=-1,BDECK='';
+const wS=(s,f)=>{const o=S;S=s;try{return f()}finally{S=o}};
+const clone=s=>JSON.parse(JSON.stringify(s,(k,v)=>k=='log'?[]:v));
+const dig=s=>JSON.stringify([s.p,s.turn,s.amb,s.win,s.sw,s.pend,s.prom]);
+function sim(s,i,a){const c=clone(s);try{wS(c,()=>act(c,i,a))}catch(e){return null}return c}
+const costN=A=>(A.cost||[]).reduce((n,x)=>n+(+x.n||0),0);
+const maxCost=c=>Math.min(5,Math.max(1,...DB[c.k].atk.map(costN)));
+
+/* ---------- evaluation ---------- */
+const STP={frozen:45,paralyzed:40,burnt:25,poisoned:22,psyched:30};
+function unit(c,s,own){if(!c||c.hp<=0)return 0;const d=DB[c.k],mh=c.mhp||d.hp;let v=90+c.hp*.85+mh*.1+(c.hp/mh)*30;
+ const e=total(c),need=maxCost(c);v+=Math.min(e,need+1)*9+Math.max(0,e-need-1)*.5;
+ if(c.st)v-=STP[c.st]||25;
+ if(c.ob)v+=c.ob.by==own?18:-18;
+ if(c.im!=null&&c.im>=s.tn)v+=35;if((c.dr||[]).length)v+=15;return v}
+function estV(c,A){let v=atkVal(c,A);const cv=+A.cv||0,m=A.cm=='mul';
+ if(A.coin=='need')v*=.5;else if(A.coin=='bonus')v=m?v*(1+(cv-1)*.5):v+cv*.5;else if(A.coin=='until')v=m?v:v+cv;
+ else if(A.coin=='multi'){const n=Math.max(1,+A.fn||1);v=m?v*n*.5:v+cv*n*.5}else if(A.sx=='×'&&!A.tg)v*=1.6;return v}
+const payable=(c,A,t)=>{const e=Object.assign({},c.e);if(t)e[t]=(e[t]||0)+1;return pay({e,vo:c.vo},A)};
+/* best damage side a could deal to side b on its next attack (current energy + one generator energy) */
+function threat(s,a,b){const X=s.p[a],Y=s.p[b],c=X.main;if(!c||!Y.main||c.hp<=0||c.st=='frozen')return 0;
+ const ets=X.en&&X.en.length?X.en:[null];let best=0;
+ DB[c.k].atk.forEach(A=>{if(A.mode=='heal'||A.side=='self'||c.na===s.tn+1)return;let ok=false;for(const t of ets)if(payable(c,A,t)){ok=true;break}if(!ok)return;
+  const raw=A.nd?0:estV(c,A),el=elA(c,s),tg=A.slot=='main'?[Y.main]:A.slot=='flanks'?Y.fl:[Y.main,...Y.fl];let sc=0;
+  tg.forEach(x=>{if(!x||x.hp<=0)return;const dm=hitDmg(el,x,raw);sc+=Math.min(dm,x.hp)*.9+(dm>=x.hp?380:0)});
+  if(hasSt(A.st))sc+=15;best=Math.max(best,sc)});
+ return best*(c.st=='paralyzed'?.6:c.st=='psyched'?.8:1)}
+function ev(s,i){return wS(s,()=>{if(s.win>=0)return s.win==i?1e6-s.tn:-1e6+s.tn;
+ const me=s.p[i],op=s.p[1-i];let v=(me.score-op.score)*520;
+ fld(me).forEach(c=>v+=unit(c,s,i));fld(op).forEach(c=>v-=unit(c,s,1-i));
+ me.hand.forEach(c=>v+=ycard(c)?(fld(me).length<3?14:5):2);v-=op.hand.length*3;
+ v+=((me.tr||[]).length-(op.tr||[]).length)*80;
+ if(s.amb&&ambOn(s))v+=s.amb.by==i?30:-30;
+ if(!me.main)v-=60;else{const c=me.main,dm=Math.max(0,...DB[c.k].atk.map(A=>A.mode=='heal'||A.nd?0:estV(c,A)));v+=Math.min(dm,120)*.35-(dm?0:50)}
+ if(!op.main)v+=60;
+ v-=.6*threat(s,1-i,i);v+=.3*threat(s,i,1-i);return v})}
+
+/* ---------- candidate actions ---------- */
+function expandCmd(s,i,d,x){const r=cmdInputs(s,i,d,x);if(r.err)return[];
+ const I=r.inp.find(q=>q.k=='s'?x.s==null:q.k=='e'?x.e==null:x.i==null);if(!I)return[x];
+ let out=[];for(const z of I.opts){const y=Object.assign({},x);if(I.k=='s'){y.o=z.v.o;y.s=z.v.s}else if(I.k=='e')y.e=z.v;else y.i=z.v;out=out.concat(expandCmd(s,i,d,y));if(out.length>12)break}return out}
+function cands(s,i){return wS(s,()=>{const p=s.p[i],r=[],T=a=>r.push({a,term:true}),N=a=>r.push({a,term:false});
+ if(s.phase!='play'||s.turn!=i||s.win>=0||s.pend||s.prom.includes(true))return r;
+ T({t:'end'});const m=p.main;if(m&&DB[m.k])DB[m.k].atk.forEach((A,ix)=>T({t:'atk',a:ix}));
+ if(p.pe)['m',0,1].forEach(k=>{if(get(p,k))N({t:'att',s:k})});
+ p.hand.forEach((c,h)=>{if(ycard(c))[0,1].forEach(f=>{if(!p.fl[f])N({t:'place',h,s:f})})});
+ [0,1].forEach(f=>{if(p.fl[f]&&p.main)N({t:'swp',f})});
+ if(p.shf){const ks=['m',0,1];for(let x=0;x<3;x++)for(let y=x+1;y<3;y++)if(get(p,ks[x])&&get(p,ks[y]))N({t:'shf',a:ks[x],b:ks[y]})}
+ if(p.bg&&!p.bst)N({t:'bst'});
+ ['m',0,1].forEach(k=>{const c=get(p,k),a=c&&abOf(c);if(!a||!AK[a.k]||!AK[a.k].a||abOk(s,i,k))return;const op=AK[a.k].opts&&AK[a.k].opts(s,i,k,a);if(op)op.forEach(q=>N(Object.assign({t:'ab',s:k},q.a)));else N({t:'ab',s:k})});
+ p.hand.forEach((c,h)=>{const d=DB[c.k];if(!d||d.type!='commando')return;if(d.kind=='helper'&&p.hu===s.tn)return;expandCmd(s,i,d,{}).slice(0,10).forEach(x=>N({t:'cmd',h,x}))});
+ if(ambRef(s,i)&&p.ru!==s.tn)[0,1].forEach(f=>N({t:'amb',f}));
+ if(ambGy(s,i)&&s.amb.gu!==s.tn)N({t:'gy'});
+ return r})}
+
+/* ---------- planning ---------- */
+function tval(s,i,a,base){let tot=0,n=0;const N=a.t=='end'?1:3;
+ for(let k=0;k<N;k++){const c=sim(s,i,a);if(!c)continue;if(k==0&&a.t!='end'&&dig(c)==base)return null;tot+=ev(c,i);n++}
+ return n?tot/n+(a.t=='atk'?1:0):null}
+function plan(s,i){const t0=Date.now(),base=dig(s),cs=cands(s,i);let best={a:{t:'end'},v:-Infinity};
+ for(const c of cs)if(c.term){const v=tval(s,i,c.a,base);if(v!=null&&v>best.v)best={a:c.a,v}}
+ if(BN<9){let bn={a:null,v:-Infinity};
+  for(const c of cs){if(c.term||Date.now()-t0>2500)continue;const s2=sim(s,i,c.a);if(!s2||dig(s2)==base)continue;
+   if(s2.win==i)return c.a;let v;
+   if(s2.win>=0||s2.prom.includes(true)||s2.pend||s2.turn!=i)v=ev(s2,i);
+   else{const b2=dig(s2);v=-Infinity;for(const c2 of cands(s2,i))if(c2.term){const x=tval(s2,i,c2.a,b2);if(x!=null&&x>v)v=x}}
+   if(v>bn.v)bn={a:c.a,v}}
+  if(bn.a&&bn.v>best.v+1.5)return bn.a}
+ return best.a}
+function pickSlot(s,i,kind){const p=s.p[i];let best=null,bv=-Infinity;
+ [0,1].forEach(f=>{if(!p.fl[f])return;const c=sim(s,i,{t:kind,f});if(!c)return;const v=ev(c,i);if(v>bv){bv=v;best={t:kind,f}}});return best}
+
+/* ---------- setup ---------- */
+function botSetup(){const s=S,p=s.p[1],ys=p.hand.filter(ycard),n=Math.min(3,ys.length);if(!n)return;
+ const pw=c=>Math.max(0,...DB[c.k].atk.map(A=>(A.mode=='heal'||A.nd)?0:(+A.v||0)/Math.pow(Math.max(1,costN(A)),.6)));
+ const mainS=c=>DB[c.k].hp*.35+pw(c)*1.2-(+DB[c.k].ret||0)*7,flS=c=>DB[c.k].hp*.12+pw(c)*.5;
+ let best=null,bv=-Infinity;
+ const go=(cur)=>{if(cur.length==n){let v=mainS(cur[0])+.55*(cur[1]?flS(cur[1]):0)+.55*(cur[2]?flS(cur[2]):0);
+   if(n==3)v+=trioOn({main:cur[0],fl:[cur[1],cur[2]]}).length*140;if(v>bv){bv=v;best=cur.slice()}return}
+  ys.forEach(c=>{if(!cur.includes(c))go(cur.concat(c))})};go([]);
+ [['m',best[0]],[0,best[1]],[1,best[2]]].forEach(([k,c])=>{if(!c)return;const h=p.hand.indexOf(c);if(h>=0)act(s,1,{t:'place',h,s:k})});
+ act(s,1,{t:'rdy'})}
+function botDeck(){const ok=[];DEFD.forEach(f=>{const ids=[];f.y.forEach(nm=>{const c=DB.find(x=>x.type!='commando'&&x.name==nm);if(c)ids.push(c.id)});
+  f.c.forEach(nm=>{const c=DB.find(x=>x.type=='commando'&&x.cid==nm);if(c)ids.push(c.id)});
+  const d=fixDeck({deck:ids});if(d.deck.length>=14&&typeCount(d.deck,'yokai')>=3)ok.push({name:f.n,deck:d.deck,en:gen(f.en)})});
+ if(ok.length)return ok[Math.random()*ok.length|0];const r=randDeck(1);r.name='Random deck';return r}
+
+/* ---------- driver ---------- */
+const busy=()=>DIR||COIN||TZB||USEB||RQ||!!document.querySelector('.pickov,.coinov,.tzo,.cuo');
+function kick(ms){if(!SOLO||BT)return;BT=setTimeout(tick,ms||400)}
+function tick(){BT=null;if(!SOLO||!S||MODE!='host'||S.win>=0)return;if(busy())return kick(300);
+ try{let a=null,dl=850;const s=S;
+  if(s.phase=='play'){
+   if(s.prom[1])a=pickSlot(s,1,'prom');
+   else if(s.prom[0]){}
+   else if(s.pend){if(s.pend.who==1)a=pickSlot(s,1,'pb')}
+   else if(s.turn==1){if(BTN!==s.tn){BTN=s.tn;BN=0}a=BN++<10?plan(s,1):{t:'end'};dl=a.t=='atk'?1600:900}}
+  if(a){act(S,1,a);bc();kick(dl)}
+ }catch(e){console.error('bot',e);try{if(S&&S.phase=='play'&&S.turn==1&&!S.prom.includes(true)&&!S.pend){act(S,1,{t:'end'});bc()}}catch(_){}kick(900)}}
+
+window.startSolo=function(){if(!pkCanPlay())return;resetFx();seenCoin=0;ZOOM=null;COIN=false;
+ try{closeNet()}catch(e){}MODE='host';ME=0;SOLO=true;BN=0;BTN=-1;clearTimeout(BT);BT=null;
+ const b=botDeck();BDECK=b.name;b.name='Bot · '+b.name;S=newGame(myDeck(),b);
+ try{botSetup()}catch(e){console.error('bot setup',e)}
+ show('game');render();toast('Opponent deck: '+BDECK);kick(800)};
+const SEND0=send;send=function(a){const r=SEND0(a);if(SOLO)kick(600);return r};
+const LV0=leave;leave=function(k){SOLO=false;clearTimeout(BT);BT=null;return LV0(k)};
+window.__bot={plan,ev,cands,sim,botSetup,get solo(){return SOLO}};
+})();
 </script>
 </body></html>
